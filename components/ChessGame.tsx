@@ -33,9 +33,11 @@ interface GameState {
   currentPlayer: PieceColor
   selectedSquare: Position | null
   possibleMoves: Position[]
-  gameStatus: 'playing' | 'check' | 'checkmate' | 'draw'
+  gameStatus: 'playing' | 'check' | 'checkmate' | 'stalemate' | 'draw'
   moves: Move[]
   isThinking: boolean
+  winner: PieceColor | null
+  kingInCheck: PieceColor | null
 }
 
 // Chess piece Unicode symbols
@@ -96,8 +98,46 @@ const getBoardPiece = (board: (ChessPiece | null)[][], pos: Position): ChessPiec
   return board[pos.row]?.[pos.col] ?? null
 }
 
-// Get possible moves for a piece
-const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Position[] => {
+// Find king position for a given color
+const findKing = (board: (ChessPiece | null)[][], color: PieceColor): Position | null => {
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = getBoardPiece(board, { row, col })
+      if (piece && piece.type === 'king' && piece.color === color) {
+        return { row, col }
+      }
+    }
+  }
+  return null
+}
+
+// Check if a square is under attack by the opponent
+const isSquareUnderAttack = (board: (ChessPiece | null)[][], pos: Position, byColor: PieceColor): boolean => {
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = getBoardPiece(board, { row, col })
+      if (piece && piece.color === byColor) {
+        const moves = getPossibleMovesRaw(board, { row, col })
+        if (moves.some(move => positionsEqual(move, pos))) {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+// Check if the king is in check
+const isKingInCheck = (board: (ChessPiece | null)[][], color: PieceColor): boolean => {
+  const kingPos = findKing(board, color)
+  if (!kingPos) return false
+  
+  const opponentColor = color === 'white' ? 'black' : 'white'
+  return isSquareUnderAttack(board, kingPos, opponentColor)
+}
+
+// Get possible moves for a piece (without check validation)
+const getPossibleMovesRaw = (board: (ChessPiece | null)[][], from: Position): Position[] => {
   const piece = getBoardPiece(board, from)
   if (!piece) return []
 
@@ -227,6 +267,25 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
   return moves
 }
 
+// Get possible moves for a piece (with check validation)
+const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Position[] => {
+  const piece = getBoardPiece(board, from)
+  if (!piece) return []
+
+  const rawMoves = getPossibleMovesRaw(board, from)
+  const validMoves: Position[] = []
+
+  // Filter out moves that would leave the king in check
+  for (const to of rawMoves) {
+    const newBoard = makeMove(board, from, to)
+    if (!isKingInCheck(newBoard, piece.color)) {
+      validMoves.push(to)
+    }
+  }
+
+  return validMoves
+}
+
 // Make a move on the board
 const makeMove = (board: (ChessPiece | null)[][], from: Position, to: Position): (ChessPiece | null)[][] => {
   const newBoard = board.map(row => [...row])
@@ -238,6 +297,60 @@ const makeMove = (board: (ChessPiece | null)[][], from: Position, to: Position):
   }
   
   return newBoard
+}
+
+// Get all possible moves for a color
+const getAllPossibleMoves = (board: (ChessPiece | null)[][], color: PieceColor): Move[] => {
+  const moves: Move[] = []
+  
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = getBoardPiece(board, { row, col })
+      if (piece && piece.color === color) {
+        const from = { row, col }
+        const possibleMoves = getPossibleMoves(board, from)
+        
+        for (const to of possibleMoves) {
+          const capturedPiece = getBoardPiece(board, to)
+          moves.push({
+            from,
+            to,
+            piece,
+            capturedPiece: capturedPiece || undefined
+          })
+        }
+      }
+    }
+  }
+  
+  return moves
+}
+
+// Check if the game is over and determine the result
+const checkGameStatus = (board: (ChessPiece | null)[][], currentPlayer: PieceColor): {
+  status: 'playing' | 'check' | 'checkmate' | 'stalemate'
+  winner: PieceColor | null
+  kingInCheck: PieceColor | null
+} => {
+  const isInCheck = isKingInCheck(board, currentPlayer)
+  const possibleMoves = getAllPossibleMoves(board, currentPlayer)
+  
+  if (possibleMoves.length === 0) {
+    if (isInCheck) {
+      // Checkmate - opponent wins
+      const winner = currentPlayer === 'white' ? 'black' : 'white'
+      return { status: 'checkmate', winner, kingInCheck: currentPlayer }
+    } else {
+      // Stalemate - draw
+      return { status: 'stalemate', winner: null, kingInCheck: null }
+    }
+  }
+  
+  if (isInCheck) {
+    return { status: 'check', winner: null, kingInCheck: currentPlayer }
+  }
+  
+  return { status: 'playing', winner: null, kingInCheck: null }
 }
 
 // Simple AI evaluation function
@@ -267,34 +380,13 @@ const evaluatePosition = (board: (ChessPiece | null)[][], color: PieceColor): nu
     }
   }
   
-  return score
-}
-
-// Get all possible moves for a color
-const getAllPossibleMoves = (board: (ChessPiece | null)[][], color: PieceColor): Move[] => {
-  const moves: Move[] = []
-  
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const piece = getBoardPiece(board, { row, col })
-      if (piece && piece.color === color) {
-        const from = { row, col }
-        const possibleMoves = getPossibleMoves(board, from)
-        
-        for (const to of possibleMoves) {
-          const capturedPiece = getBoardPiece(board, to)
-          moves.push({
-            from,
-            to,
-            piece,
-            capturedPiece: capturedPiece || undefined
-          })
-        }
-      }
-    }
+  // Bonus for putting opponent in check
+  const opponentColor = color === 'white' ? 'black' : 'white'
+  if (isKingInCheck(board, opponentColor)) {
+    score += 5
   }
   
-  return moves
+  return score
 }
 
 // Simple minimax AI (depth 2)
@@ -326,12 +418,14 @@ export default function ChessGame() {
     possibleMoves: [],
     gameStatus: 'playing',
     moves: [],
-    isThinking: false
+    isThinking: false,
+    winner: null,
+    kingInCheck: null
   }))
 
   // Handle square click
   const handleSquareClick = useCallback((row: number, col: number) => {
-    if (gameState.currentPlayer !== 'white' || gameState.isThinking) return
+    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') return
 
     const clickedPos = { row, col }
     
@@ -378,6 +472,9 @@ export default function ChessGame() {
           capturedPiece: capturedPiece || undefined
         }
 
+        // Check game status after the move
+        const gameStatus = checkGameStatus(newBoard, 'black')
+
         setGameState(prev => ({
           ...prev,
           board: newBoard,
@@ -385,7 +482,10 @@ export default function ChessGame() {
           selectedSquare: null,
           possibleMoves: [],
           moves: [...prev.moves, move],
-          isThinking: true
+          isThinking: gameStatus.status !== 'checkmate' && gameStatus.status !== 'stalemate',
+          gameStatus: gameStatus.status,
+          winner: gameStatus.winner,
+          kingInCheck: gameStatus.kingInCheck
         }))
       }
     } else {
@@ -410,21 +510,26 @@ export default function ChessGame() {
 
   // AI move effect
   useEffect(() => {
-    if (gameState.currentPlayer === 'black' && gameState.isThinking) {
+    if (gameState.currentPlayer === 'black' && gameState.isThinking && gameState.gameStatus !== 'checkmate' && gameState.gameStatus !== 'stalemate') {
       const timer = setTimeout(() => {
         const bestMove = getBestMove(gameState.board, 'black')
         
         if (bestMove) {
           const newBoard = makeMove(gameState.board, bestMove.from, bestMove.to)
+          const gameStatus = checkGameStatus(newBoard, 'white')
           
           setGameState(prev => ({
             ...prev,
             board: newBoard,
             currentPlayer: 'white',
             moves: [...prev.moves, bestMove],
-            isThinking: false
+            isThinking: false,
+            gameStatus: gameStatus.status,
+            winner: gameStatus.winner,
+            kingInCheck: gameStatus.kingInCheck
           }))
         } else {
+          // AI has no moves - this shouldn't happen if game status is correct
           setGameState(prev => ({
             ...prev,
             isThinking: false
@@ -434,7 +539,7 @@ export default function ChessGame() {
 
       return () => clearTimeout(timer)
     }
-  }, [gameState.currentPlayer, gameState.isThinking, gameState.board])
+  }, [gameState.currentPlayer, gameState.isThinking, gameState.board, gameState.gameStatus])
 
   // Reset game
   const resetGame = () => {
@@ -445,7 +550,9 @@ export default function ChessGame() {
       possibleMoves: [],
       gameStatus: 'playing',
       moves: [],
-      isThinking: false
+      isThinking: false,
+      winner: null,
+      kingInCheck: null
     })
   }
 
@@ -455,6 +562,7 @@ export default function ChessGame() {
     const isLight = (row + col) % 2 === 0
     const isSelected = gameState.selectedSquare && positionsEqual(gameState.selectedSquare, { row, col })
     const isPossibleMove = gameState.possibleMoves.some(move => positionsEqual(move, { row, col }))
+    const isKingInCheck = piece && piece.type === 'king' && gameState.kingInCheck === piece.color
     
     let squareClasses = `
       w-16 h-16 flex items-center justify-center cursor-pointer text-5xl font-bold
@@ -462,6 +570,7 @@ export default function ChessGame() {
       ${isLight ? 'bg-amber-100' : 'bg-amber-800'}
       ${isSelected ? 'ring-4 ring-blue-500' : ''}
       ${isPossibleMove ? 'ring-2 ring-green-400' : ''}
+      ${isKingInCheck ? 'bg-red-400' : ''}
     `
 
     return (
@@ -496,22 +605,47 @@ export default function ChessGame() {
     )
   }
 
+  // Get game status message
+  const getGameStatusMessage = () => {
+    switch (gameState.gameStatus) {
+      case 'checkmate':
+        if (gameState.winner === 'white') {
+          return { text: '🎉 You Win! Checkmate!', color: 'text-green-600' }
+        } else {
+          return { text: '💀 AI Wins! Checkmate!', color: 'text-red-600' }
+        }
+      case 'stalemate':
+        return { text: '🤝 Draw! Stalemate!', color: 'text-yellow-600' }
+      case 'check':
+        if (gameState.kingInCheck === 'white') {
+          return { text: '⚠️ Your King is in Check!', color: 'text-red-600' }
+        } else {
+          return { text: '⚡ AI King is in Check!', color: 'text-blue-600' }
+        }
+      default:
+        if (gameState.isThinking) {
+          return { text: '🤖 AI is thinking...', color: 'text-blue-600' }
+        } else {
+          return { 
+            text: gameState.currentPlayer === 'white' ? '⚪ Your turn' : '⚫ AI turn', 
+            color: gameState.currentPlayer === 'white' ? 'text-gray-800' : 'text-gray-600' 
+          }
+        }
+    }
+  }
+
+  const statusMessage = getGameStatusMessage()
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-lg shadow-xl p-6">
         {/* Game Status */}
         <div className="flex justify-between items-center mb-6">
-          <div className="text-lg font-semibold">
-            {gameState.isThinking ? (
-              <span className="text-blue-600 flex items-center">
-                🤖 AI is thinking...
-                <div className="ml-2 animate-pulse">⚡</div>
-              </span>
-            ) : (
-              <span className={gameState.currentPlayer === 'white' ? 'text-gray-800' : 'text-gray-600'}>
-                {gameState.currentPlayer === 'white' ? '⚪ Your turn' : '⚫ AI turn'}
-              </span>
-            )}
+          <div className={`text-lg font-semibold ${statusMessage.color}`}>
+            <span className="flex items-center">
+              {statusMessage.text}
+              {gameState.isThinking && <div className="ml-2 animate-pulse">⚡</div>}
+            </span>
           </div>
           
           <button
@@ -521,6 +655,40 @@ export default function ChessGame() {
             New Game
           </button>
         </div>
+
+        {/* Game Over Notification */}
+        {(gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') && (
+          <div className="mb-6 p-4 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200">
+            <div className="text-center">
+              <div className="text-2xl mb-2">
+                {gameState.gameStatus === 'checkmate' ? 
+                  (gameState.winner === 'white' ? '🏆' : '👑') : 
+                  '🤝'
+                }
+              </div>
+              <div className={`text-xl font-bold mb-2 ${statusMessage.color}`}>
+                Game Over!
+              </div>
+              <div className="text-gray-600">
+                {gameState.gameStatus === 'checkmate' && gameState.winner === 'white' && 
+                  "Congratulations! You defeated the AI!"
+                }
+                {gameState.gameStatus === 'checkmate' && gameState.winner === 'black' && 
+                  "The AI has defeated you. Better luck next time!"
+                }
+                {gameState.gameStatus === 'stalemate' && 
+                  "The game ends in a draw. No legal moves available!"
+                }
+              </div>
+              <button
+                onClick={resetGame}
+                className="mt-3 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
+              >
+                Play Again
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Chess Board */}
         <div className="flex justify-center mb-6">
@@ -563,7 +731,9 @@ export default function ChessGame() {
             <li>Click on your pieces (white) to select them</li>
             <li>Green dots show possible moves</li>
             <li>Click on a highlighted square to move</li>
+            <li>Red squares indicate a king in check</li>
             <li>The AI will automatically respond with black pieces</li>
+            <li>Win by checkmating the AI's king!</li>
           </ul>
         </div>
       </div>
