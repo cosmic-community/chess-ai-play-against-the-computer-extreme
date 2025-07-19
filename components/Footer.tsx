@@ -1,5 +1,17 @@
+'use client'
+
 export default function Footer() {
-  const COSMIC_BUCKET_SLUG = process.env.NEXT_PUBLIC_COSMIC_BUCKET_SLUG || process.env.COSMIC_BUCKET_SLUG || 'chess-ai'
+  const COSMIC_BUCKET_SLUG = process.env.NEXT_PUBLIC_COSMIC_BUCKET_SLUG || 'chess-ai'
+
+  const handleMouseOver = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const target = e.currentTarget
+    target.style.backgroundColor = '#1a2326'
+  }
+
+  const handleMouseOut = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const target = e.currentTarget
+    target.style.backgroundColor = '#11171A'
+  }
 
   return (
     <footer className="bg-gray-900 text-white py-12">
@@ -46,14 +58,8 @@ export default function Footer() {
                   gap: '8px',
                   transition: 'background-color 0.2s ease'
                 }}
-                onMouseOver={(e) => {
-                  const target = e.target as HTMLElement
-                  target.style.backgroundColor = '#1a2326'
-                }}
-                onMouseOut={(e) => {
-                  const target = e.target as HTMLElement
-                  target.style.backgroundColor = '#11171A'
-                }}
+                onMouseOver={handleMouseOver}
+                onMouseOut={handleMouseOut}
               >
                 <img 
                   src="https://cdn.cosmicjs.com/b67de7d0-c810-11ed-b01d-23d7b265c299-logo508x500.svg" 

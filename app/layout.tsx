@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 
@@ -9,7 +9,6 @@ export const metadata: Metadata = {
   description: 'Play chess against an intelligent AI opponent powered by Cosmic. Features complete rule validation, move history, and strategic gameplay.',
   keywords: 'chess, AI, game, cosmic, artificial intelligence, strategy',
   authors: [{ name: 'Chess AI' }],
-  viewport: 'width=device-width, initial-scale=1',
   robots: 'index, follow',
   openGraph: {
     title: 'Chess AI - Play Against the Computer',
@@ -30,6 +29,11 @@ export const metadata: Metadata = {
     description: 'Play chess against an intelligent AI opponent powered by Cosmic AI',
     images: ['https://imgix.cosmicjs.com/b67de7d0-c810-11ed-b01d-23d7b265c299-chess-hero.jpg?w=1200&h=630&fit=crop&auto=format,compress'],
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({
