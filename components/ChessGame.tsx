@@ -806,11 +806,17 @@ export default function ChessGame() {
       w-16 h-16 flex items-center justify-center cursor-pointer text-5xl font-bold relative
       transition-all duration-200 hover:brightness-110
       ${isLight ? 'bg-amber-100' : 'bg-amber-800'}
-      ${isSelected ? 'ring-4 ring-blue-500' : ''}
-      ${isPossibleMove ? 'ring-2 ring-green-400' : ''}
-      ${isHintMove ? 'ring-4 ring-purple-500 ring-opacity-75' : ''}
       ${isKingInCheck ? 'bg-red-400' : ''}
     `
+
+    // Enhanced border styling for better visibility on all 4 sides
+    if (isSelected) {
+      squareClasses += ' border-4 border-blue-500 shadow-lg shadow-blue-500/50'
+    } else if (isHintMove) {
+      squareClasses += ' border-4 border-purple-500 shadow-lg shadow-purple-500/50'
+    } else if (isPossibleMove) {
+      squareClasses += ' border-2 border-green-400 shadow-md shadow-green-400/30'
+    }
 
     return (
       <div
@@ -987,10 +993,10 @@ export default function ChessGame() {
           <p><strong>How to play:</strong></p>
           <ul className="list-disc list-inside space-y-1 mt-2">
             <li>Click on your pieces (white) to select them</li>
-            <li>Green dots show possible moves</li>
+            <li>Green borders show possible moves</li>
             <li>Click on a highlighted square to move</li>
             <li>Red squares indicate a king in check</li>
-            <li>Purple ring highlights show AI hint suggestions</li>
+            <li>Purple borders highlight show AI hint suggestions</li>
             <li>The AI will automatically respond with black pieces</li>
             <li>Win by checkmating the AI's king!</li>
           </ul>
