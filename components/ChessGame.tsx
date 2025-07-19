@@ -38,6 +38,7 @@ interface GameState {
   isThinking: boolean
   winner: PieceColor | null
   kingInCheck: PieceColor | null
+  aiLogs: string[]
 }
 
 // Chess piece Unicode symbols
@@ -499,7 +500,8 @@ export default function ChessGame() {
     moves: [],
     isThinking: false,
     winner: null,
-    kingInCheck: null
+    kingInCheck: null,
+    aiLogs: []
   }))
 
   // Handle square click
@@ -610,6 +612,7 @@ export default function ChessGame() {
           })
           
           let bestMove: Move | null = null
+          let logs: string[] = []
           
           if (response.ok) {
             const data = await response.json()
@@ -617,11 +620,17 @@ export default function ChessGame() {
               // Try to parse the AI-suggested move
               bestMove = parseAlgebraicMove(data.move, gameState.board, 'black')
             }
+            // Store AI logs if available
+            if (data.logs) {
+              logs = data.logs
+            }
+          } else {
+            logs.push('API request failed with status: ' + response.status)
           }
           
           // Fallback to local AI if server-side AI fails
           if (!bestMove) {
-            console.log('Using fallback AI move generation')
+            logs.push('Server-side AI failed, using fallback local AI')
             bestMove = getBestMove(gameState.board, 'black')
           }
           
@@ -637,22 +646,29 @@ export default function ChessGame() {
               isThinking: false,
               gameStatus: gameStatus.status,
               winner: gameStatus.winner,
-              kingInCheck: gameStatus.kingInCheck
+              kingInCheck: gameStatus.kingInCheck,
+              aiLogs: logs
             }))
           } else {
             // AI has no moves - this shouldn't happen if game status is correct
+            logs.push('AI has no valid moves available')
             setGameState(prev => ({
               ...prev,
-              isThinking: false
+              isThinking: false,
+              aiLogs: logs
             }))
           }
         } catch (error) {
           console.error('Error generating AI move:', error)
+          const errorLogs = [`Error generating AI move: ${error}`]
+          
           // Fallback to local AI
           const fallbackMove = getBestMove(gameState.board, 'black')
           if (fallbackMove) {
             const newBoard = makeMove(gameState.board, fallbackMove.from, fallbackMove.to)
             const gameStatus = checkGameStatus(newBoard, 'white')
+            
+            errorLogs.push('Using fallback local AI due to error')
             
             setGameState(prev => ({
               ...prev,
@@ -662,12 +678,15 @@ export default function ChessGame() {
               isThinking: false,
               gameStatus: gameStatus.status,
               winner: gameStatus.winner,
-              kingInCheck: gameStatus.kingInCheck
+              kingInCheck: gameStatus.kingInCheck,
+              aiLogs: errorLogs
             }))
           } else {
+            errorLogs.push('Fallback AI also failed - no valid moves')
             setGameState(prev => ({
               ...prev,
-              isThinking: false
+              isThinking: false,
+              aiLogs: errorLogs
             }))
           }
         }
@@ -688,7 +707,8 @@ export default function ChessGame() {
       moves: [],
       isThinking: false,
       winner: null,
-      kingInCheck: null
+      kingInCheck: null,
+      aiLogs: []
     })
   }
 
@@ -721,14 +741,6 @@ export default function ChessGame() {
               piece.color === 'white' 
                 ? 'text-white' 
                 : 'text-black'
-            }
-            style={
-              piece.color === 'white' 
-                ? { 
-                    textShadow: '2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000, 1px 1px 0px #000, -1px -1px 0px #000, 1px -1px 0px #000, -1px 1px 0px #000',
-                    WebkitTextStroke: '1px #000'
-                  }
-                : {}
             }
           >
             {pieceSymbols[piece.color][piece.type]}
@@ -836,6 +848,20 @@ export default function ChessGame() {
             </div>
           </div>
         </div>
+
+        {/* AI Logs */}
+        {gameState.aiLogs.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3">AI Move Generation Logs</h3>
+            <div className="bg-gray-900 text-green-400 rounded-lg p-4 max-h-32 overflow-y-auto font-mono text-sm">
+              {gameState.aiLogs.map((log, index) => (
+                <div key={index} className="mb-1">
+                  <span className="text-gray-500">[{index + 1}]</span> {log}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Move History */}
         {gameState.moves.length > 0 && (
