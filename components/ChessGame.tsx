@@ -457,7 +457,7 @@ export default function ChessGame() {
     const isPossibleMove = gameState.possibleMoves.some(move => positionsEqual(move, { row, col }))
     
     let squareClasses = `
-      w-12 h-12 flex items-center justify-center cursor-pointer text-2xl font-bold
+      w-16 h-16 flex items-center justify-center cursor-pointer text-5xl font-bold
       transition-all duration-200 hover:brightness-110
       ${isLight ? 'bg-amber-100' : 'bg-amber-800'}
       ${isSelected ? 'ring-4 ring-blue-500' : ''}
@@ -471,12 +471,26 @@ export default function ChessGame() {
         onClick={() => handleSquareClick(row, col)}
       >
         {piece && (
-          <span className={piece.color === 'white' ? 'text-white drop-shadow-lg' : 'text-black'}>
+          <span 
+            className={
+              piece.color === 'white' 
+                ? 'text-white' 
+                : 'text-black'
+            }
+            style={
+              piece.color === 'white' 
+                ? { 
+                    textShadow: '2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000, 1px 1px 0px #000, -1px -1px 0px #000, 1px -1px 0px #000, -1px 1px 0px #000',
+                    WebkitTextStroke: '1px #000'
+                  }
+                : {}
+            }
+          >
             {pieceSymbols[piece.color][piece.type]}
           </span>
         )}
         {isPossibleMove && !piece && (
-          <div className="w-3 h-3 bg-green-400 rounded-full opacity-70"></div>
+          <div className="w-4 h-4 bg-green-400 rounded-full opacity-70"></div>
         )}
       </div>
     )
