@@ -353,7 +353,70 @@ const checkGameStatus = (board: (ChessPiece | null)[][], currentPlayer: PieceCol
   return { status: 'playing', winner: null, kingInCheck: null }
 }
 
-// Simple AI evaluation function
+// Convert board to FEN notation (simplified)
+const boardToFEN = (board: (ChessPiece | null)[][], currentPlayer: PieceColor): string => {
+  let fen = ''
+  
+  for (let row = 0; row < 8; row++) {
+    let emptyCount = 0
+    
+    for (let col = 0; col < 8; col++) {
+      const piece = getBoardPiece(board, { row, col })
+      
+      if (!piece) {
+        emptyCount++
+      } else {
+        if (emptyCount > 0) {
+          fen += emptyCount.toString()
+          emptyCount = 0
+        }
+        
+        const pieceChar = piece.type === 'knight' ? 'n' : piece.type[0]
+        fen += piece.color === 'white' ? pieceChar.toUpperCase() : pieceChar
+      }
+    }
+    
+    if (emptyCount > 0) {
+      fen += emptyCount.toString()
+    }
+    
+    if (row < 7) {
+      fen += '/'
+    }
+  }
+  
+  // Add current player, castling, en passant, halfmove, fullmove
+  fen += ` ${currentPlayer[0]} - - 0 1`
+  
+  return fen
+}
+
+// Convert moves to algebraic notation for game history
+const moveToAlgebraic = (move: Move): string => {
+  const fromSquare = String.fromCharCode(97 + move.from.col) + (8 - move.from.row)
+  const toSquare = String.fromCharCode(97 + move.to.col) + (8 - move.to.row)
+  
+  let algebraic = ''
+  
+  // Piece notation (except pawns)
+  if (move.piece.type !== 'pawn') {
+    algebraic += move.piece.type === 'knight' ? 'N' : move.piece.type[0].toUpperCase()
+  }
+  
+  // Capture notation
+  if (move.capturedPiece) {
+    if (move.piece.type === 'pawn') {
+      algebraic += fromSquare[0] // pawn captures show the file
+    }
+    algebraic += 'x'
+  }
+  
+  algebraic += toSquare
+  
+  return algebraic
+}
+
+// Simple AI evaluation function (fallback)
 const evaluatePosition = (board: (ChessPiece | null)[][], color: PieceColor): number => {
   const pieceValues: Record<PieceType, number> = {
     pawn: 1,
@@ -389,7 +452,7 @@ const evaluatePosition = (board: (ChessPiece | null)[][], color: PieceColor): nu
   return score
 }
 
-// Simple minimax AI (depth 2)
+// Simple minimax AI (fallback)
 const getBestMove = (board: (ChessPiece | null)[][], color: PieceColor): Move | null => {
   const moves = getAllPossibleMoves(board, color)
   if (moves.length === 0) return null
@@ -408,6 +471,22 @@ const getBestMove = (board: (ChessPiece | null)[][], color: PieceColor): Move | 
   }
   
   return bestMove
+}
+
+// Parse algebraic notation to move
+const parseAlgebraicMove = (algebraic: string, board: (ChessPiece | null)[][], color: PieceColor): Move | null => {
+  // This is a simplified parser - in a real implementation you'd want more robust parsing
+  const moves = getAllPossibleMoves(board, color)
+  
+  // Try to find a move that matches the algebraic notation
+  for (const move of moves) {
+    const moveAlgebraic = moveToAlgebraic(move)
+    if (moveAlgebraic === algebraic || moveAlgebraic.toLowerCase() === algebraic.toLowerCase()) {
+      return move
+    }
+  }
+  
+  return null
 }
 
 export default function ChessGame() {
@@ -511,35 +590,92 @@ export default function ChessGame() {
   // AI move effect
   useEffect(() => {
     if (gameState.currentPlayer === 'black' && gameState.isThinking && gameState.gameStatus !== 'checkmate' && gameState.gameStatus !== 'stalemate') {
-      const timer = setTimeout(() => {
-        const bestMove = getBestMove(gameState.board, 'black')
-        
-        if (bestMove) {
-          const newBoard = makeMove(gameState.board, bestMove.from, bestMove.to)
-          const gameStatus = checkGameStatus(newBoard, 'white')
+      const timer = setTimeout(async () => {
+        try {
+          // Generate FEN string and game history for AI
+          const fenString = boardToFEN(gameState.board, 'black')
+          const gameHistory = gameState.moves.map(moveToAlgebraic)
           
-          setGameState(prev => ({
-            ...prev,
-            board: newBoard,
-            currentPlayer: 'white',
-            moves: [...prev.moves, bestMove],
-            isThinking: false,
-            gameStatus: gameStatus.status,
-            winner: gameStatus.winner,
-            kingInCheck: gameStatus.kingInCheck
-          }))
-        } else {
-          // AI has no moves - this shouldn't happen if game status is correct
-          setGameState(prev => ({
-            ...prev,
-            isThinking: false
-          }))
+          // Call server-side API for AI move generation
+          const response = await fetch('/api/generate-ai-move', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fenString,
+              gameHistory,
+              currentPlayer: 'black'
+            })
+          })
+          
+          let bestMove: Move | null = null
+          
+          if (response.ok) {
+            const data = await response.json()
+            if (data.move) {
+              // Try to parse the AI-suggested move
+              bestMove = parseAlgebraicMove(data.move, gameState.board, 'black')
+            }
+          }
+          
+          // Fallback to local AI if server-side AI fails
+          if (!bestMove) {
+            console.log('Using fallback AI move generation')
+            bestMove = getBestMove(gameState.board, 'black')
+          }
+          
+          if (bestMove) {
+            const newBoard = makeMove(gameState.board, bestMove.from, bestMove.to)
+            const gameStatus = checkGameStatus(newBoard, 'white')
+            
+            setGameState(prev => ({
+              ...prev,
+              board: newBoard,
+              currentPlayer: 'white',
+              moves: [...prev.moves, bestMove],
+              isThinking: false,
+              gameStatus: gameStatus.status,
+              winner: gameStatus.winner,
+              kingInCheck: gameStatus.kingInCheck
+            }))
+          } else {
+            // AI has no moves - this shouldn't happen if game status is correct
+            setGameState(prev => ({
+              ...prev,
+              isThinking: false
+            }))
+          }
+        } catch (error) {
+          console.error('Error generating AI move:', error)
+          // Fallback to local AI
+          const fallbackMove = getBestMove(gameState.board, 'black')
+          if (fallbackMove) {
+            const newBoard = makeMove(gameState.board, fallbackMove.from, fallbackMove.to)
+            const gameStatus = checkGameStatus(newBoard, 'white')
+            
+            setGameState(prev => ({
+              ...prev,
+              board: newBoard,
+              currentPlayer: 'white',
+              moves: [...prev.moves, fallbackMove],
+              isThinking: false,
+              gameStatus: gameStatus.status,
+              winner: gameStatus.winner,
+              kingInCheck: gameStatus.kingInCheck
+            }))
+          } else {
+            setGameState(prev => ({
+              ...prev,
+              isThinking: false
+            }))
+          }
         }
       }, 1000) // 1 second delay for AI thinking
 
       return () => clearTimeout(timer)
     }
-  }, [gameState.currentPlayer, gameState.isThinking, gameState.board, gameState.gameStatus])
+  }, [gameState.currentPlayer, gameState.isThinking, gameState.board, gameState.gameStatus, gameState.moves])
 
   // Reset game
   const resetGame = () => {
