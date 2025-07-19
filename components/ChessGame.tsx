@@ -39,6 +39,8 @@ interface GameState {
   winner: PieceColor | null
   kingInCheck: PieceColor | null
   aiLogs: string[]
+  hintMove: Position | null
+  isGettingHint: boolean
 }
 
 // Chess piece Unicode symbols
@@ -501,7 +503,9 @@ export default function ChessGame() {
     isThinking: false,
     winner: null,
     kingInCheck: null,
-    aiLogs: []
+    aiLogs: [],
+    hintMove: null,
+    isGettingHint: false
   }))
 
   // Handle square click
@@ -509,6 +513,11 @@ export default function ChessGame() {
     if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') return
 
     const clickedPos = { row, col }
+    
+    // Clear hint when player makes a move
+    if (gameState.hintMove) {
+      setGameState(prev => ({ ...prev, hintMove: null }))
+    }
     
     // If no square is selected, select this square if it has a white piece
     if (!gameState.selectedSquare) {
@@ -589,6 +598,74 @@ export default function ChessGame() {
     }
   }, [gameState])
 
+  // Get AI hint
+  const getHint = async () => {
+    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint) return
+
+    setGameState(prev => ({ ...prev, isGettingHint: true, hintMove: null }))
+
+    try {
+      const response = await fetch('/api/generate-ai-hint', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fenString: boardToFEN(gameState.board, 'white'),
+          gameHistory: gameState.moves.map(moveToAlgebraic),
+          currentPlayer: 'white'
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.move) {
+          // Parse the hint move
+          const hintMove = parseAlgebraicMove(data.move, gameState.board, 'white')
+          if (hintMove) {
+            setGameState(prev => ({ 
+              ...prev, 
+              hintMove: hintMove.to,
+              selectedSquare: hintMove.from,
+              possibleMoves: getPossibleMoves(gameState.board, hintMove.from),
+              isGettingHint: false 
+            }))
+            return
+          }
+        }
+      }
+
+      // Fallback to local AI
+      const bestMove = getBestMove(gameState.board, 'white')
+      if (bestMove) {
+        setGameState(prev => ({ 
+          ...prev, 
+          hintMove: bestMove.to,
+          selectedSquare: bestMove.from,
+          possibleMoves: getPossibleMoves(gameState.board, bestMove.from),
+          isGettingHint: false 
+        }))
+      } else {
+        setGameState(prev => ({ ...prev, isGettingHint: false }))
+      }
+    } catch (error) {
+      console.error('Error getting hint:', error)
+      // Fallback to local AI
+      const bestMove = getBestMove(gameState.board, 'white')
+      if (bestMove) {
+        setGameState(prev => ({ 
+          ...prev, 
+          hintMove: bestMove.to,
+          selectedSquare: bestMove.from,
+          possibleMoves: getPossibleMoves(gameState.board, bestMove.from),
+          isGettingHint: false 
+        }))
+      } else {
+        setGameState(prev => ({ ...prev, isGettingHint: false }))
+      }
+    }
+  }
+
   // AI move effect
   useEffect(() => {
     if (gameState.currentPlayer === 'black' && gameState.isThinking && gameState.gameStatus !== 'checkmate' && gameState.gameStatus !== 'stalemate') {
@@ -647,7 +724,8 @@ export default function ChessGame() {
               gameStatus: gameStatus.status,
               winner: gameStatus.winner,
               kingInCheck: gameStatus.kingInCheck,
-              aiLogs: logs
+              aiLogs: logs,
+              hintMove: null // Clear hint after AI moves
             }))
           } else {
             // AI has no moves - this shouldn't happen if game status is correct
@@ -679,7 +757,8 @@ export default function ChessGame() {
               gameStatus: gameStatus.status,
               winner: gameStatus.winner,
               kingInCheck: gameStatus.kingInCheck,
-              aiLogs: errorLogs
+              aiLogs: errorLogs,
+              hintMove: null // Clear hint after AI moves
             }))
           } else {
             errorLogs.push('Fallback AI also failed - no valid moves')
@@ -708,7 +787,9 @@ export default function ChessGame() {
       isThinking: false,
       winner: null,
       kingInCheck: null,
-      aiLogs: []
+      aiLogs: [],
+      hintMove: null,
+      isGettingHint: false
     })
   }
 
@@ -719,6 +800,7 @@ export default function ChessGame() {
     const isSelected = gameState.selectedSquare && positionsEqual(gameState.selectedSquare, { row, col })
     const isPossibleMove = gameState.possibleMoves.some(move => positionsEqual(move, { row, col }))
     const isKingInCheck = piece && piece.type === 'king' && gameState.kingInCheck === piece.color
+    const isHintMove = gameState.hintMove && positionsEqual(gameState.hintMove, { row, col })
     
     let squareClasses = `
       w-16 h-16 flex items-center justify-center cursor-pointer text-5xl font-bold
@@ -726,6 +808,7 @@ export default function ChessGame() {
       ${isLight ? 'bg-amber-100' : 'bg-amber-800'}
       ${isSelected ? 'ring-4 ring-blue-500' : ''}
       ${isPossibleMove ? 'ring-2 ring-green-400' : ''}
+      ${isHintMove ? 'ring-4 ring-purple-500 ring-opacity-75' : ''}
       ${isKingInCheck ? 'bg-red-400' : ''}
     `
 
@@ -739,8 +822,8 @@ export default function ChessGame() {
           <span 
             className={
               piece.color === 'white' 
-                ? 'text-white' 
-                : 'text-black'
+                ? 'text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]' 
+                : 'text-black drop-shadow-[0_2px_2px_rgba(255,255,255,0.8)]'
             }
           >
             {pieceSymbols[piece.color][piece.type]}
@@ -748,6 +831,9 @@ export default function ChessGame() {
         )}
         {isPossibleMove && !piece && (
           <div className="w-4 h-4 bg-green-400 rounded-full opacity-70"></div>
+        )}
+        {isHintMove && (
+          <div className="absolute inset-0 bg-purple-400 opacity-20 pointer-events-none"></div>
         )}
       </div>
     )
@@ -796,13 +882,40 @@ export default function ChessGame() {
             </span>
           </div>
           
-          <button
-            onClick={resetGame}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            New Game
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={getHint}
+              disabled={gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate'}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+              {gameState.isGettingHint ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                  Getting Hint...
+                </>
+              ) : (
+                <>
+                  💡 Hint
+                </>
+              )}
+            </button>
+            <button
+              onClick={resetGame}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              New Game
+            </button>
+          </div>
         </div>
+
+        {/* Hint Message */}
+        {gameState.hintMove && (
+          <div className="mb-6 p-3 rounded-lg bg-purple-50 border-2 border-purple-200">
+            <div className="text-purple-800 font-medium">
+              💡 AI Suggestion: The purple highlight shows the recommended move!
+            </div>
+          </div>
+        )}
 
         {/* Game Over Notification */}
         {(gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') && (
@@ -849,20 +962,6 @@ export default function ChessGame() {
           </div>
         </div>
 
-        {/* AI Logs */}
-        {gameState.aiLogs.length > 0 && (
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-3">AI Move Generation Logs</h3>
-            <div className="bg-gray-900 text-green-400 rounded-lg p-4 max-h-32 overflow-y-auto font-mono text-sm">
-              {gameState.aiLogs.map((log, index) => (
-                <div key={index} className="mb-1">
-                  <span className="text-gray-500">[{index + 1}]</span> {log}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Move History */}
         {gameState.moves.length > 0 && (
           <div className="mt-6">
@@ -894,6 +993,7 @@ export default function ChessGame() {
             <li>Green dots show possible moves</li>
             <li>Click on a highlighted square to move</li>
             <li>Red squares indicate a king in check</li>
+            <li>Purple highlights show AI hint suggestions</li>
             <li>The AI will automatically respond with black pieces</li>
             <li>Win by checkmating the AI's king!</li>
           </ul>
