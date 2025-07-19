@@ -803,7 +803,7 @@ export default function ChessGame() {
     const isHintMove = gameState.hintMove && positionsEqual(gameState.hintMove, { row, col })
     
     let squareClasses = `
-      w-16 h-16 flex items-center justify-center cursor-pointer text-5xl font-bold
+      w-16 h-16 flex items-center justify-center cursor-pointer text-5xl font-bold relative
       transition-all duration-200 hover:brightness-110
       ${isLight ? 'bg-amber-100' : 'bg-amber-800'}
       ${isSelected ? 'ring-4 ring-blue-500' : ''}
@@ -831,9 +831,6 @@ export default function ChessGame() {
         )}
         {isPossibleMove && !piece && (
           <div className="w-4 h-4 bg-green-400 rounded-full opacity-70"></div>
-        )}
-        {isHintMove && (
-          <div className="absolute inset-0 bg-purple-400 opacity-20 pointer-events-none"></div>
         )}
       </div>
     )
@@ -993,7 +990,7 @@ export default function ChessGame() {
             <li>Green dots show possible moves</li>
             <li>Click on a highlighted square to move</li>
             <li>Red squares indicate a king in check</li>
-            <li>Purple highlights show AI hint suggestions</li>
+            <li>Purple ring highlights show AI hint suggestions</li>
             <li>The AI will automatically respond with black pieces</li>
             <li>Win by checkmating the AI's king!</li>
           </ul>
