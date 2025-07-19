@@ -874,7 +874,7 @@ export default function ChessGame() {
   const statusMessage = getGameStatusMessage()
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto pb-20">
       <div className="bg-white rounded-lg shadow-xl p-6">
         {/* Game Status */}
         <div className="flex justify-between items-center mb-6">
@@ -910,15 +910,6 @@ export default function ChessGame() {
             </button>
           </div>
         </div>
-
-        {/* Hint Message */}
-        {gameState.hintMove && (
-          <div className="mb-6 p-3 rounded-lg bg-purple-50 border-2 border-purple-200">
-            <div className="text-purple-800 font-medium">
-              💡 AI Suggestion: The purple highlight shows the recommended move!
-            </div>
-          </div>
-        )}
 
         {/* Game Over Notification */}
         {(gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') && (
@@ -1002,6 +993,17 @@ export default function ChessGame() {
           </ul>
         </div>
       </div>
+
+      {/* Fixed AI Hint Message - positioned at bottom */}
+      {gameState.hintMove && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-4">
+          <div className="p-3 rounded-lg bg-purple-100 border-2 border-purple-300 shadow-lg">
+            <div className="text-purple-800 font-medium text-center">
+              💡 AI Suggestion: The purple highlight shows the recommended move!
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
