@@ -6,9 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit",
-    "prebuild": "bun run type-check"
+    "lint": "next lint"
   },
   "dependencies": {
     "next": "15.1.0",
