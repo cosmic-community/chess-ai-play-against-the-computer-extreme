@@ -133,7 +133,6 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
     case 'rook':
       // Horizontal and vertical moves
       for (const [rowDir, colDir] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
-        if (rowDir === undefined || colDir === undefined) continue
         for (let i = 1; i < 8; i++) {
           const newPos = { row: from.row + rowDir * i, col: from.col + colDir * i }
           if (!isValidPosition(newPos)) break
@@ -152,7 +151,6 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
     case 'bishop':
       // Diagonal moves
       for (const [rowDir, colDir] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-        if (rowDir === undefined || colDir === undefined) continue
         for (let i = 1; i < 8; i++) {
           const newPos = { row: from.row + rowDir * i, col: from.col + colDir * i }
           if (!isValidPosition(newPos)) break
@@ -171,7 +169,6 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
     case 'queen':
       // Combination of rook and bishop moves
       for (const [rowDir, colDir] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-        if (rowDir === undefined || colDir === undefined) continue
         for (let i = 1; i < 8; i++) {
           const newPos = { row: from.row + rowDir * i, col: from.col + colDir * i }
           if (!isValidPosition(newPos)) break
@@ -190,7 +187,6 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
     case 'king':
       // One square in any direction
       for (const [rowDir, colDir] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-        if (rowDir === undefined || colDir === undefined) continue
         const newPos = { row: from.row + rowDir, col: from.col + colDir }
         if (isValidPosition(newPos)) {
           const target = board[newPos.row]?.[newPos.col]
@@ -208,7 +204,6 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
         [1, -2], [1, 2], [2, -1], [2, 1]
       ]
       for (const [rowOffset, colOffset] of knightMoves) {
-        if (rowOffset === undefined || colOffset === undefined) continue
         const newPos = { row: from.row + rowOffset, col: from.col + colOffset }
         if (isValidPosition(newPos)) {
           const target = board[newPos.row]?.[newPos.col]
@@ -363,12 +358,13 @@ export default function ChessGame() {
     if (isValidMove) {
       // Make the move
       const newBoard = makeMove(gameState.board, gameState.selectedSquare, clickedPos)
-      const piece = gameState.board[gameState.selectedSquare.row]?.[gameState.selectedSquare.col]
+      const selectedSquare = gameState.selectedSquare
+      const piece = gameState.board[selectedSquare.row]?.[selectedSquare.col]
       
       if (piece) {
         const capturedPiece = gameState.board[row]?.[col]
         const move: Move = {
-          from: gameState.selectedSquare,
+          from: selectedSquare,
           to: clickedPos,
           piece,
           capturedPiece: capturedPiece || undefined
