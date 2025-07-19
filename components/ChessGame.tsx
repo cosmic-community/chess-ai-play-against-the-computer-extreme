@@ -364,7 +364,7 @@ export default function ChessGame() {
       positionsEqual(move, clickedPos)
     )
 
-    if (isValidMove) {
+    if (isValidMove && gameState.selectedSquare) {
       // Make the move
       const newBoard = makeMove(gameState.board, gameState.selectedSquare, clickedPos)
       const piece = getBoardPiece(gameState.board, gameState.selectedSquare)
