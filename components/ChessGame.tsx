@@ -90,9 +90,15 @@ const positionsEqual = (pos1: Position, pos2: Position): boolean => {
   return pos1.row === pos2.row && pos1.col === pos2.col
 }
 
+// Safe board access helper
+const getBoardPiece = (board: (ChessPiece | null)[][], pos: Position): ChessPiece | null => {
+  if (!isValidPosition(pos)) return null
+  return board[pos.row]?.[pos.col] ?? null
+}
+
 // Get possible moves for a piece
 const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Position[] => {
-  const piece = board[from.row]?.[from.col]
+  const piece = getBoardPiece(board, from)
   if (!piece) return []
 
   const moves: Position[] = []
@@ -105,15 +111,14 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
       
       // Move forward one square
       const oneSquareAhead = { row: from.row + direction, col: from.col }
-      if (isValidPosition(oneSquareAhead) && 
-          !board[oneSquareAhead.row]?.[oneSquareAhead.col]) {
+      if (isValidPosition(oneSquareAhead) && !getBoardPiece(board, oneSquareAhead)) {
         moves.push(oneSquareAhead)
         
         // Move forward two squares from starting position
         const twoSquaresAhead = { row: from.row + 2 * direction, col: from.col }
         if (from.row === startRow && 
             isValidPosition(twoSquaresAhead) && 
-            !board[twoSquaresAhead.row]?.[twoSquaresAhead.col]) {
+            !getBoardPiece(board, twoSquaresAhead)) {
           moves.push(twoSquaresAhead)
         }
       }
@@ -122,7 +127,7 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
       for (const colOffset of [-1, 1]) {
         const capturePos = { row: from.row + direction, col: from.col + colOffset }
         if (isValidPosition(capturePos)) {
-          const target = board[capturePos.row]?.[capturePos.col]
+          const target = getBoardPiece(board, capturePos)
           if (target && target.color !== color) {
             moves.push(capturePos)
           }
@@ -132,12 +137,13 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
 
     case 'rook':
       // Horizontal and vertical moves
-      for (const [rowDir, colDir] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const rookDirections: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]]
+      for (const [rowDir, colDir] of rookDirections) {
         for (let i = 1; i < 8; i++) {
           const newPos = { row: from.row + rowDir * i, col: from.col + colDir * i }
           if (!isValidPosition(newPos)) break
           
-          const target = board[newPos.row]?.[newPos.col]
+          const target = getBoardPiece(board, newPos)
           if (!target) {
             moves.push(newPos)
           } else {
@@ -150,12 +156,13 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
 
     case 'bishop':
       // Diagonal moves
-      for (const [rowDir, colDir] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const bishopDirections: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]]
+      for (const [rowDir, colDir] of bishopDirections) {
         for (let i = 1; i < 8; i++) {
           const newPos = { row: from.row + rowDir * i, col: from.col + colDir * i }
           if (!isValidPosition(newPos)) break
           
-          const target = board[newPos.row]?.[newPos.col]
+          const target = getBoardPiece(board, newPos)
           if (!target) {
             moves.push(newPos)
           } else {
@@ -168,12 +175,13 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
 
     case 'queen':
       // Combination of rook and bishop moves
-      for (const [rowDir, colDir] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const queenDirections: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+      for (const [rowDir, colDir] of queenDirections) {
         for (let i = 1; i < 8; i++) {
           const newPos = { row: from.row + rowDir * i, col: from.col + colDir * i }
           if (!isValidPosition(newPos)) break
           
-          const target = board[newPos.row]?.[newPos.col]
+          const target = getBoardPiece(board, newPos)
           if (!target) {
             moves.push(newPos)
           } else {
@@ -186,10 +194,11 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
 
     case 'king':
       // One square in any direction
-      for (const [rowDir, colDir] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const kingDirections: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+      for (const [rowDir, colDir] of kingDirections) {
         const newPos = { row: from.row + rowDir, col: from.col + colDir }
         if (isValidPosition(newPos)) {
-          const target = board[newPos.row]?.[newPos.col]
+          const target = getBoardPiece(board, newPos)
           if (!target || target.color !== color) {
             moves.push(newPos)
           }
@@ -199,14 +208,14 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
 
     case 'knight':
       // L-shaped moves
-      const knightMoves = [
+      const knightMoves: [number, number][] = [
         [-2, -1], [-2, 1], [-1, -2], [-1, 2],
         [1, -2], [1, 2], [2, -1], [2, 1]
       ]
       for (const [rowOffset, colOffset] of knightMoves) {
         const newPos = { row: from.row + rowOffset, col: from.col + colOffset }
         if (isValidPosition(newPos)) {
-          const target = board[newPos.row]?.[newPos.col]
+          const target = getBoardPiece(board, newPos)
           if (!target || target.color !== color) {
             moves.push(newPos)
           }
@@ -221,7 +230,7 @@ const getPossibleMoves = (board: (ChessPiece | null)[][], from: Position): Posit
 // Make a move on the board
 const makeMove = (board: (ChessPiece | null)[][], from: Position, to: Position): (ChessPiece | null)[][] => {
   const newBoard = board.map(row => [...row])
-  const piece = newBoard[from.row]?.[from.col]
+  const piece = getBoardPiece(board, from)
   
   if (piece) {
     newBoard[to.row][to.col] = { ...piece, hasMoved: true }
@@ -246,7 +255,7 @@ const evaluatePosition = (board: (ChessPiece | null)[][], color: PieceColor): nu
   
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 8; col++) {
-      const piece = board[row]?.[col]
+      const piece = getBoardPiece(board, { row, col })
       if (piece) {
         const value = pieceValues[piece.type]
         if (piece.color === color) {
@@ -267,13 +276,13 @@ const getAllPossibleMoves = (board: (ChessPiece | null)[][], color: PieceColor):
   
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 8; col++) {
-      const piece = board[row]?.[col]
+      const piece = getBoardPiece(board, { row, col })
       if (piece && piece.color === color) {
         const from = { row, col }
         const possibleMoves = getPossibleMoves(board, from)
         
         for (const to of possibleMoves) {
-          const capturedPiece = board[to.row]?.[to.col]
+          const capturedPiece = getBoardPiece(board, to)
           moves.push({
             from,
             to,
@@ -328,7 +337,7 @@ export default function ChessGame() {
     
     // If no square is selected, select this square if it has a white piece
     if (!gameState.selectedSquare) {
-      const piece = gameState.board[row]?.[col]
+      const piece = getBoardPiece(gameState.board, clickedPos)
       if (piece && piece.color === 'white') {
         const moves = getPossibleMoves(gameState.board, clickedPos)
         setGameState(prev => ({
@@ -358,13 +367,12 @@ export default function ChessGame() {
     if (isValidMove) {
       // Make the move
       const newBoard = makeMove(gameState.board, gameState.selectedSquare, clickedPos)
-      const selectedSquare = gameState.selectedSquare
-      const piece = gameState.board[selectedSquare.row]?.[selectedSquare.col]
+      const piece = getBoardPiece(gameState.board, gameState.selectedSquare)
       
       if (piece) {
-        const capturedPiece = gameState.board[row]?.[col]
+        const capturedPiece = getBoardPiece(gameState.board, clickedPos)
         const move: Move = {
-          from: selectedSquare,
+          from: gameState.selectedSquare,
           to: clickedPos,
           piece,
           capturedPiece: capturedPiece || undefined
@@ -382,7 +390,7 @@ export default function ChessGame() {
       }
     } else {
       // Try to select a different piece
-      const piece = gameState.board[row]?.[col]
+      const piece = getBoardPiece(gameState.board, clickedPos)
       if (piece && piece.color === 'white') {
         const moves = getPossibleMoves(gameState.board, clickedPos)
         setGameState(prev => ({
@@ -443,7 +451,7 @@ export default function ChessGame() {
 
   // Render square
   const renderSquare = (row: number, col: number) => {
-    const piece = gameState.board[row]?.[col]
+    const piece = getBoardPiece(gameState.board, { row, col })
     const isLight = (row + col) % 2 === 0
     const isSelected = gameState.selectedSquare && positionsEqual(gameState.selectedSquare, { row, col })
     const isPossibleMove = gameState.possibleMoves.some(move => positionsEqual(move, { row, col }))
