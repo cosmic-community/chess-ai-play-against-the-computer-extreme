@@ -27,6 +27,15 @@ interface Move {
   capturedPiece?: ChessPiece
 }
 
+// Animation state interface
+interface AnimationState {
+  isAnimating: boolean
+  attackingPiece: PieceType | null
+  attackingSquare: Position | null
+  targetSquare: Position | null
+  animationType: 'move' | 'capture' | null
+}
+
 // Game state interface
 interface GameState {
   board: (ChessPiece | null)[][]
@@ -41,6 +50,7 @@ interface GameState {
   aiLogs: string[]
   hintMove: Position | null
   isGettingHint: boolean
+  animation: AnimationState
 }
 
 // Chess piece Unicode symbols
@@ -61,6 +71,16 @@ const pieceSymbols: Record<PieceColor, Record<PieceType, string>> = {
     knight: '♞',
     pawn: '♟'
   }
+}
+
+// Attack animation symbols for each piece type
+const attackAnimations: Record<PieceType, string[]> = {
+  king: ['👑', '⚔️', '🛡️', '✨', '💫'], // Royal strike with crown and sword
+  queen: ['👸', '🔮', '⭐', '💜', '🌟', '💥'], // Magical spell casting
+  rook: ['🏰', '💣', '🔥', '💥', '🌪️'], // Cannon bombardment
+  bishop: ['⛪', '🙏', '✨', '💫', '⚡', '🌟'], // Divine lightning strike
+  knight: ['🐴', '⚔️', '🛡️', '💨', '⚡', '💥'], // Charging cavalry attack
+  pawn: ['⚔️', '🛡️', '💪', '💥'] // Simple but determined strike
 }
 
 // Initialize chess board with starting position
@@ -505,12 +525,71 @@ export default function ChessGame() {
     kingInCheck: null,
     aiLogs: [],
     hintMove: null,
-    isGettingHint: false
+    isGettingHint: false,
+    animation: {
+      isAnimating: false,
+      attackingPiece: null,
+      attackingSquare: null,
+      targetSquare: null,
+      animationType: null
+    }
   }))
 
+  // Animation state for attack effects
+  const [animationFrame, setAnimationFrame] = useState(0)
+
+  // Trigger attack animation
+  const triggerAttackAnimation = useCallback((piece: ChessPiece, from: Position, to: Position, isCapture: boolean) => {
+    if (!isCapture) return Promise.resolve()
+
+    return new Promise<void>((resolve) => {
+      setGameState(prev => ({
+        ...prev,
+        animation: {
+          isAnimating: true,
+          attackingPiece: piece.type,
+          attackingSquare: from,
+          targetSquare: to,
+          animationType: 'capture'
+        }
+      }))
+
+      // Animate through the attack sequence
+      let frame = 0
+      const maxFrames = attackAnimations[piece.type].length
+      
+      const animateFrame = () => {
+        setAnimationFrame(frame)
+        frame++
+        
+        if (frame < maxFrames) {
+          setTimeout(animateFrame, 200) // 200ms per frame
+        } else {
+          // Animation complete
+          setTimeout(() => {
+            setGameState(prev => ({
+              ...prev,
+              animation: {
+                isAnimating: false,
+                attackingPiece: null,
+                attackingSquare: null,
+                targetSquare: null,
+                animationType: null
+              }
+            }))
+            setAnimationFrame(0)
+            resolve()
+          }, 300) // Brief pause after animation
+        }
+      }
+      
+      animateFrame()
+    })
+  }, [])
+
   // Handle square click
-  const handleSquareClick = useCallback((row: number, col: number) => {
-    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') return
+  const handleSquareClick = useCallback(async (row: number, col: number) => {
+    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate' || gameState.animation.isAnimating) return
 
     const clickedPos = { row, col }
     
@@ -549,12 +628,19 @@ export default function ChessGame() {
     )
 
     if (isValidMove && gameState.selectedSquare) {
-      // Make the move
-      const newBoard = makeMove(gameState.board, gameState.selectedSquare, clickedPos)
       const piece = getBoardPiece(gameState.board, gameState.selectedSquare)
+      const capturedPiece = getBoardPiece(gameState.board, clickedPos)
+      const isCapture = !!capturedPiece
       
       if (piece) {
-        const capturedPiece = getBoardPiece(gameState.board, clickedPos)
+        // Trigger attack animation if it's a capture
+        if (isCapture) {
+          await triggerAttackAnimation(piece, gameState.selectedSquare, clickedPos, true)
+        }
+        
+        // Make the move after animation
+        const newBoard = makeMove(gameState.board, gameState.selectedSquare, clickedPos)
+        
         const move: Move = {
           from: gameState.selectedSquare,
           to: clickedPos,
@@ -596,11 +682,11 @@ export default function ChessGame() {
         }))
       }
     }
-  }, [gameState])
+  }, [gameState, triggerAttackAnimation])
 
   // Get AI hint
   const getHint = async () => {
-    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint) return
+    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint || gameState.animation.isAnimating) return
 
     setGameState(prev => ({ ...prev, isGettingHint: true, hintMove: null }))
 
@@ -668,7 +754,7 @@ export default function ChessGame() {
 
   // AI move effect
   useEffect(() => {
-    if (gameState.currentPlayer === 'black' && gameState.isThinking && gameState.gameStatus !== 'checkmate' && gameState.gameStatus !== 'stalemate') {
+    if (gameState.currentPlayer === 'black' && gameState.isThinking && gameState.gameStatus !== 'checkmate' && gameState.gameStatus !== 'stalemate' && !gameState.animation.isAnimating) {
       const timer = setTimeout(async () => {
         try {
           // Generate FEN string and game history for AI
@@ -712,6 +798,14 @@ export default function ChessGame() {
           }
           
           if (bestMove) {
+            const capturedPiece = getBoardPiece(gameState.board, bestMove.to)
+            const isCapture = !!capturedPiece
+            
+            // Trigger AI attack animation if it's a capture
+            if (isCapture) {
+              await triggerAttackAnimation(bestMove.piece, bestMove.from, bestMove.to, true)
+            }
+            
             const newBoard = makeMove(gameState.board, bestMove.from, bestMove.to)
             const gameStatus = checkGameStatus(newBoard, 'white')
             
@@ -743,6 +837,14 @@ export default function ChessGame() {
           // Fallback to local AI
           const fallbackMove = getBestMove(gameState.board, 'black')
           if (fallbackMove) {
+            const capturedPiece = getBoardPiece(gameState.board, fallbackMove.to)
+            const isCapture = !!capturedPiece
+            
+            // Trigger fallback AI attack animation if it's a capture
+            if (isCapture) {
+              await triggerAttackAnimation(fallbackMove.piece, fallbackMove.from, fallbackMove.to, true)
+            }
+            
             const newBoard = makeMove(gameState.board, fallbackMove.from, fallbackMove.to)
             const gameStatus = checkGameStatus(newBoard, 'white')
             
@@ -773,7 +875,7 @@ export default function ChessGame() {
 
       return () => clearTimeout(timer)
     }
-  }, [gameState.currentPlayer, gameState.isThinking, gameState.board, gameState.gameStatus, gameState.moves])
+  }, [gameState.currentPlayer, gameState.isThinking, gameState.board, gameState.gameStatus, gameState.moves, gameState.animation.isAnimating, triggerAttackAnimation])
 
   // Reset game
   const resetGame = () => {
@@ -789,8 +891,16 @@ export default function ChessGame() {
       kingInCheck: null,
       aiLogs: [],
       hintMove: null,
-      isGettingHint: false
+      isGettingHint: false,
+      animation: {
+        isAnimating: false,
+        attackingPiece: null,
+        attackingSquare: null,
+        targetSquare: null,
+        animationType: null
+      }
     })
+    setAnimationFrame(0)
   }
 
   // Render square
@@ -801,12 +911,15 @@ export default function ChessGame() {
     const isPossibleMove = gameState.possibleMoves.some(move => positionsEqual(move, { row, col }))
     const isKingInCheck = piece && piece.type === 'king' && gameState.kingInCheck === piece.color
     const isHintMove = gameState.hintMove && positionsEqual(gameState.hintMove, { row, col })
+    const isAttackingSquare = gameState.animation.attackingSquare && positionsEqual(gameState.animation.attackingSquare, { row, col })
+    const isTargetSquare = gameState.animation.targetSquare && positionsEqual(gameState.animation.targetSquare, { row, col })
     
     let squareClasses = `
       w-16 h-16 flex items-center justify-center cursor-pointer text-5xl font-bold relative
       transition-all duration-200 hover:brightness-110
       ${isLight ? 'bg-amber-100' : 'bg-amber-800'}
       ${isKingInCheck ? 'bg-red-400' : ''}
+      ${gameState.animation.isAnimating ? 'pointer-events-none' : ''}
     `
 
     // Enhanced border styling for better visibility on all 4 sides
@@ -818,24 +931,45 @@ export default function ChessGame() {
       squareClasses += ' border-2 border-green-400 shadow-md shadow-green-400/30'
     }
 
+    // Animation effects
+    if (isAttackingSquare && gameState.animation.isAnimating) {
+      squareClasses += ' animate-pulse ring-4 ring-yellow-400'
+    }
+    if (isTargetSquare && gameState.animation.isAnimating) {
+      squareClasses += ' animate-bounce ring-4 ring-red-500'
+    }
+
     return (
       <div
         key={`${row}-${col}`}
         className={squareClasses}
         onClick={() => handleSquareClick(row, col)}
       >
-        {piece && (
+        {/* Render the chess piece or animation effect */}
+        {gameState.animation.isAnimating && isTargetSquare && gameState.animation.attackingPiece ? (
+          // Show attack animation on target square
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-6xl animate-bounce z-20">
+              {attackAnimations[gameState.animation.attackingPiece][animationFrame] || '💥'}
+            </span>
+          </div>
+        ) : piece ? (
+          // Show regular piece
           <span 
-            className={
-              piece.color === 'white' 
+            className={`
+              ${piece.color === 'white' 
                 ? 'text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]' 
                 : 'text-black drop-shadow-[0_2px_2px_rgba(255,255,255,0.8)]'
-            }
+              }
+              ${isAttackingSquare && gameState.animation.isAnimating ? 'animate-pulse scale-110' : ''}
+            `}
           >
             {pieceSymbols[piece.color][piece.type]}
           </span>
-        )}
-        {isPossibleMove && !piece && (
+        ) : null}
+        
+        {/* Show move indicator for empty squares */}
+        {isPossibleMove && !piece && !gameState.animation.isAnimating && (
           <div className="w-4 h-4 bg-green-400 rounded-full opacity-70"></div>
         )}
       </div>
@@ -844,6 +978,19 @@ export default function ChessGame() {
 
   // Get game status message
   const getGameStatusMessage = () => {
+    if (gameState.animation.isAnimating) {
+      const pieceNames: Record<PieceType, string> = {
+        king: 'King',
+        queen: 'Queen',
+        rook: 'Rook',
+        bishop: 'Bishop',
+        knight: 'Knight',
+        pawn: 'Pawn'
+      }
+      const pieceName = gameState.animation.attackingPiece ? pieceNames[gameState.animation.attackingPiece] : 'Piece'
+      return { text: `⚔️ ${pieceName} attacks!`, color: 'text-red-600' }
+    }
+
     switch (gameState.gameStatus) {
       case 'checkmate':
         if (gameState.winner === 'white') {
@@ -881,14 +1028,14 @@ export default function ChessGame() {
           <div className={`text-lg font-semibold ${statusMessage.color}`}>
             <span className="flex items-center">
               {statusMessage.text}
-              {gameState.isThinking && <div className="ml-2 animate-pulse">⚡</div>}
+              {(gameState.isThinking || gameState.animation.isAnimating) && <div className="ml-2 animate-pulse">⚡</div>}
             </span>
           </div>
           
           <div className="flex gap-2">
             <button
               onClick={getHint}
-              disabled={gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate'}
+              disabled={gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate' || gameState.animation.isAnimating}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
               {gameState.isGettingHint ? (
@@ -904,7 +1051,8 @@ export default function ChessGame() {
             </button>
             <button
               onClick={resetGame}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              disabled={gameState.animation.isAnimating}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
               New Game
             </button>
@@ -912,7 +1060,7 @@ export default function ChessGame() {
         </div>
 
         {/* Game Over Notification */}
-        {(gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') && (
+        {(gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') && !gameState.animation.isAnimating && (
           <div className="mb-6 p-4 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200">
             <div className="text-center">
               <div className="text-2xl mb-2">
@@ -988,6 +1136,7 @@ export default function ChessGame() {
             <li>Click on a highlighted square to move</li>
             <li>Red squares indicate a king in check</li>
             <li>Purple borders highlight show AI hint suggestions</li>
+            <li>Watch epic attack animations when pieces capture!</li>
             <li>The AI will automatically respond with black pieces</li>
             <li>Win by checkmating the AI's king!</li>
           </ul>
@@ -995,12 +1144,21 @@ export default function ChessGame() {
       </div>
 
       {/* Fixed AI Hint Message - positioned at bottom */}
-      {gameState.hintMove && (
+      {gameState.hintMove && !gameState.animation.isAnimating && (
         <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-4">
           <div className="p-3 rounded-lg bg-purple-100 border-2 border-purple-300 shadow-lg">
             <div className="text-purple-800 font-medium text-center">
               💡 AI Suggestion: The purple highlight shows the recommended move!
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attack Animation Overlay */}
+      {gameState.animation.isAnimating && (
+        <div className="fixed inset-0 pointer-events-none z-40 flex items-center justify-center">
+          <div className="text-8xl animate-bounce">
+            {gameState.animation.attackingPiece && attackAnimations[gameState.animation.attackingPiece][animationFrame]}
           </div>
         </div>
       )}
