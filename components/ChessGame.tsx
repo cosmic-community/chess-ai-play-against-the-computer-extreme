@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Timer from './Timer'
 
 // Chess piece types and colors
 type PieceType = 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
@@ -51,6 +52,9 @@ interface GameState {
   hintMove: Position | null
   isGettingHint: boolean
   animation: AnimationState
+  speedChessMode: boolean
+  playerTimeLeft: number
+  isTimeExpired: boolean
 }
 
 // Chess piece Unicode symbols
@@ -532,11 +536,47 @@ export default function ChessGame() {
       attackingSquare: null,
       targetSquare: null,
       animationType: null
-    }
+    },
+    speedChessMode: false,
+    playerTimeLeft: 60, // 1 minute in seconds
+    isTimeExpired: false
   }))
 
   // Animation state for attack effects
   const [animationFrame, setAnimationFrame] = useState(0)
+
+  // Handle time expiration
+  const handleTimeExpire = useCallback(() => {
+    if (gameState.currentPlayer === 'white' && gameState.speedChessMode && !gameState.isTimeExpired) {
+      setGameState(prev => ({
+        ...prev,
+        isTimeExpired: true,
+        gameStatus: 'checkmate',
+        winner: 'black'
+      }))
+    }
+  }, [gameState.currentPlayer, gameState.speedChessMode, gameState.isTimeExpired])
+
+  // Toggle speed chess mode
+  const toggleSpeedChessMode = useCallback(() => {
+    setGameState(prev => ({
+      ...prev,
+      speedChessMode: !prev.speedChessMode,
+      playerTimeLeft: 60,
+      isTimeExpired: false
+    }))
+  }, [])
+
+  // Reset timer when player's turn changes
+  const resetPlayerTimer = useCallback(() => {
+    if (gameState.speedChessMode && gameState.currentPlayer === 'white') {
+      setGameState(prev => ({
+        ...prev,
+        playerTimeLeft: 60,
+        isTimeExpired: false
+      }))
+    }
+  }, [gameState.speedChessMode, gameState.currentPlayer])
 
   // Trigger attack animation
   const triggerAttackAnimation = useCallback((piece: ChessPiece, from: Position, to: Position, isCapture: boolean) => {
@@ -589,7 +629,12 @@ export default function ChessGame() {
 
   // Handle square click
   const handleSquareClick = useCallback(async (row: number, col: number) => {
-    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate' || gameState.animation.isAnimating) return
+    if (gameState.currentPlayer !== 'white' || 
+        gameState.isThinking || 
+        gameState.gameStatus === 'checkmate' || 
+        gameState.gameStatus === 'stalemate' || 
+        gameState.animation.isAnimating ||
+        gameState.isTimeExpired) return
 
     const clickedPos = { row, col }
     
@@ -686,7 +731,11 @@ export default function ChessGame() {
 
   // Get AI hint
   const getHint = async () => {
-    if (gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint || gameState.animation.isAnimating) return
+    if (gameState.currentPlayer !== 'white' || 
+        gameState.isThinking || 
+        gameState.isGettingHint || 
+        gameState.animation.isAnimating ||
+        gameState.isTimeExpired) return
 
     setGameState(prev => ({ ...prev, isGettingHint: true, hintMove: null }))
 
@@ -898,7 +947,10 @@ export default function ChessGame() {
         attackingSquare: null,
         targetSquare: null,
         animationType: null
-      }
+      },
+      speedChessMode: gameState.speedChessMode, // Preserve speed chess mode setting
+      playerTimeLeft: 60,
+      isTimeExpired: false
     })
     setAnimationFrame(0)
   }
@@ -919,7 +971,7 @@ export default function ChessGame() {
       transition-all duration-200 hover:brightness-110
       ${isLight ? 'bg-amber-100' : 'bg-amber-800'}
       ${isKingInCheck ? 'bg-red-400' : ''}
-      ${gameState.animation.isAnimating ? 'pointer-events-none' : ''}
+      ${gameState.animation.isAnimating || gameState.isTimeExpired ? 'pointer-events-none' : ''}
     `
 
     // Enhanced border styling for better visibility on all 4 sides
@@ -978,6 +1030,10 @@ export default function ChessGame() {
 
   // Get game status message
   const getGameStatusMessage = () => {
+    if (gameState.isTimeExpired) {
+      return { text: '⏰ Time Expired! AI Wins!', color: 'text-red-600' }
+    }
+
     if (gameState.animation.isAnimating) {
       const pieceNames: Record<PieceType, string> = {
         king: 'King',
@@ -1023,6 +1079,38 @@ export default function ChessGame() {
   return (
     <div className="max-w-4xl mx-auto pb-20">
       <div className="bg-white rounded-lg shadow-xl p-6">
+        {/* Game Mode Toggle */}
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold text-gray-800">Chess Game</h2>
+            <button
+              onClick={toggleSpeedChessMode}
+              disabled={gameState.animation.isAnimating}
+              className={`
+                px-4 py-2 rounded-lg font-medium transition-all duration-200
+                ${gameState.speedChessMode 
+                  ? 'bg-red-500 text-white hover:bg-red-600' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }
+                disabled:opacity-50 disabled:cursor-not-allowed
+              `}
+            >
+              {gameState.speedChessMode ? '⚡ Speed Chess ON' : '🐌 Normal Chess'}
+            </button>
+          </div>
+          
+          {/* Speed Chess Timer */}
+          {gameState.speedChessMode && (
+            <Timer
+              initialTime={60}
+              isActive={gameState.currentPlayer === 'white' && !gameState.isTimeExpired && gameState.gameStatus === 'playing' && !gameState.animation.isAnimating}
+              onExpire={handleTimeExpire}
+              onReset={resetPlayerTimer}
+              className="ml-4"
+            />
+          )}
+        </div>
+
         {/* Game Status */}
         <div className="flex justify-between items-center mb-6">
           <div className={`text-lg font-semibold ${statusMessage.color}`}>
@@ -1035,7 +1123,13 @@ export default function ChessGame() {
           <div className="flex gap-2">
             <button
               onClick={getHint}
-              disabled={gameState.currentPlayer !== 'white' || gameState.isThinking || gameState.isGettingHint || gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate' || gameState.animation.isAnimating}
+              disabled={gameState.currentPlayer !== 'white' || 
+                       gameState.isThinking || 
+                       gameState.isGettingHint || 
+                       gameState.gameStatus === 'checkmate' || 
+                       gameState.gameStatus === 'stalemate' || 
+                       gameState.animation.isAnimating ||
+                       gameState.isTimeExpired}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
               {gameState.isGettingHint ? (
@@ -1059,12 +1153,26 @@ export default function ChessGame() {
           </div>
         </div>
 
+        {/* Speed Chess Info */}
+        {gameState.speedChessMode && (
+          <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-200">
+            <div className="flex items-center gap-2 text-orange-800">
+              <span className="text-lg">⚡</span>
+              <div>
+                <div className="font-semibold">Speed Chess Mode Active</div>
+                <div className="text-sm">You have 1 minute total for all your moves. Timer runs only during your turn!</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Game Over Notification */}
-        {(gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate') && !gameState.animation.isAnimating && (
+        {(gameState.gameStatus === 'checkmate' || gameState.gameStatus === 'stalemate' || gameState.isTimeExpired) && !gameState.animation.isAnimating && (
           <div className="mb-6 p-4 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200">
             <div className="text-center">
               <div className="text-2xl mb-2">
-                {gameState.gameStatus === 'checkmate' ? 
+                {gameState.isTimeExpired ? '⏰' :
+                 gameState.gameStatus === 'checkmate' ? 
                   (gameState.winner === 'white' ? '🏆' : '👑') : 
                   '🤝'
                 }
@@ -1073,10 +1181,13 @@ export default function ChessGame() {
                 Game Over!
               </div>
               <div className="text-gray-600">
+                {gameState.isTimeExpired && 
+                  "Time expired! You ran out of time in speed chess mode."
+                }
                 {gameState.gameStatus === 'checkmate' && gameState.winner === 'white' && 
                   "Congratulations! You defeated the AI!"
                 }
-                {gameState.gameStatus === 'checkmate' && gameState.winner === 'black' && 
+                {gameState.gameStatus === 'checkmate' && gameState.winner === 'black' && !gameState.isTimeExpired &&
                   "The AI has defeated you. Better luck next time!"
                 }
                 {gameState.gameStatus === 'stalemate' && 
@@ -1139,6 +1250,13 @@ export default function ChessGame() {
             <li>Watch epic attack animations when pieces capture!</li>
             <li>The AI will automatically respond with black pieces</li>
             <li>Win by checkmating the AI's king!</li>
+            {gameState.speedChessMode && (
+              <>
+                <li><strong>Speed Chess:</strong> You have only 1 minute total for all moves!</li>
+                <li>Timer counts down only during your turn and pauses when AI is thinking</li>
+                <li>Game ends immediately if timer reaches zero!</li>
+              </>
+            )}
           </ul>
         </div>
       </div>
